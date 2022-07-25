@@ -24,3 +24,5 @@ You can either create just one static file for a specific post, or a number of s
 "Remove WordPress Classes" will get rid of all CSS-classes from WordPress.
 
 An example for usage can be found in the sources.
+
+index.html is an example of how to set up your template.
