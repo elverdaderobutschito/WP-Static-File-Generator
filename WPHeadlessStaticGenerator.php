@@ -4,11 +4,12 @@
  * USAGE:
  * $generator = new WPHeadlessStaticGenerator("http://localhost/wordpress/index.php/wp-json/wp/v2/", '/temp/WPHeadless/article_template2.html');
  * $generator->setDateFormat('d.m.Y');
- * $generator->setFileOwner('butsch');
+ * $generator->setFileOwner('butsch'); (for local usage if you want to edit the static files)
  * $generator->setSavePath("/tmp/WPHeadless/Articles");
  * $generator->setTagWrap("<p>|</p>");
- * $generator->createSinglePost('39');
- * $generator->createAllPosts();
+ * $generator->injectDataIntoTemplate('posts/', $markerArray);
+ * 
+ * For more info see: https://github.com/elverdaderobutschito/WP-Static-File-Generator/blob/main/README.md
  */
 
 /**
@@ -18,26 +19,27 @@
  * @author El Butschito
  */
 class WPHeadlessStaticGenerator {
-    //put your code here
     private $apiUrl;
     private $templatePath;
     private $dateFormat;
     private $fileOwner;
     private $savePath;
-    private $pathToFile = array();
-    private $tagWrap;
+    private $wrapArray;
     private $removeWPClasses = false;
+    private $dateFormatPattern = '/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/';
+    
+     public function __construct($apiUrl, $templatePath) {
+        $this->setApiUrl($apiUrl);
+        
+        $this->setTemplatePath($templatePath);
+    }
     
     public function setWPUrl($url) {
         $this->wpUrl = $url;
     }
     
     public function setApiUrl($apiUrl) {
-        if (substr($apiUrl, -1) == '/') { 
-            $this->apiUrl = $apiUrl;
-        } else {
-            $this->apiUrl = $apiUrl . '/';
-        }
+        $this->apiUrl = $this->checkTrailingSlash($apiUrl);
     }
     
     public function getApiUrl() {
@@ -72,8 +74,16 @@ class WPHeadlessStaticGenerator {
         return $this->pathToFile;
     }
     
-    public function setTagWrap($tagWrap) {
-        $this->tagWrap = $tagWrap;
+    public function setWrapArray($wrapArray) {
+        if (!is_array($wrapArray)) {
+            $this->wrapArray = array();
+        } else {
+            $this->wrapArray = $wrapArray;
+        }
+    }
+    
+    public function setDateFormatPattern($pattern) {
+        $this->dateFormatPattern = '/' . $pattern . '/';
     }
     
     public function getSavePath() {
@@ -94,49 +104,86 @@ class WPHeadlessStaticGenerator {
         }
     }
     
-    public function __construct($apiUrl, $templatePath) {
-        $this->setApiUrl($apiUrl);
+    public function injectDataIntoTemplate($wpApiEndpoint, $dataMarkerArray) {
+        $wpApiEndpoint = $this->checkTrailingSlash($wpApiEndpoint);
+        $arrData = $this->callWPApi($this->apiUrl . $wpApiEndpoint);
         
-        $this->setTemplatePath($templatePath);
-    }
-    
-    public function createSinglePost($id) {
-        $arrPost = $this->callWPApi($this->apiUrl . 'posts/' . $id);
-        
-        $this->renderSinglePost($arrPost);
-    }
-    
-    public function createAllPosts() {
-        $arrPosts = $this->callWPApi($this->apiUrl . 'posts/');
-        
-        foreach ($arrPosts as $currPost) {
-            $this->renderSinglePost($currPost);
+        if (!is_array($arrData)) {
+            $this->injectSingle($arrData, $wpApiEndpoint, $dataMarkerArray);
+        } else {
+            foreach ($arrData as $currData) {
+                $this->injectSingle($currData, $wpApiEndpoint, $dataMarkerArray);
+            }
         }
     }
     
-    private function renderSinglePost($arrPost) {
-        $singlePost = file_get_contents($this->templatePath);
+    private function injectSingle($arrData, $endpoint, $dataMarkerArray) {
+        $template = file_get_contents($this->templatePath);
         
-        $pathToFile = $this->getSavePath() . '/' . $arrPost->slug . '.html';
-        
-        $this->pathToFile[] = $pathToFile;
-        
-        $singlePost = str_replace('###yoast_head###', $arrPost->yoast_head, $singlePost);
-        $singlePost = str_replace('###title###', $arrPost->title->rendered, $singlePost);  
-        $singlePost = str_replace('###content###', $arrPost->content->rendered, $singlePost);
-        $singlePost = str_replace('###date###', $this->convertDate($arrPost->date), $singlePost);
-        $singlePost = str_replace('###author###', $this->getAuthorName($arrPost->author), $singlePost);
-        $singlePost = str_replace('###tags###', $this->getTagNames($arrPost->tags), $singlePost);
-        
-        if ($this->removeWPClasses == true) {
-            $singlePost = preg_replace('/class=".*\b"/', '', $singlePost);
+        if (property_exists($arrData, 'slug')) {
+            $pathToFile = $this->getSavePath() . '/' . $arrData->slug . '.html';
+        } else {
+            $pathToFile = $this->getSavePath() . '/' . $endpoint . '_' . $arrData->id . '.html'; //-- assuming all API-Data has at least an ID
         }
-       
-        file_put_contents($pathToFile, $singlePost);
+        
+        foreach ($dataMarkerArray as $pathToEndpoint => $marker) {
+            if (!preg_match('/\|/', $pathToEndpoint)) {
+                $data = $this->getData($arrData, $pathToEndpoint);
+                if (preg_match($this->dateFormatPattern, $data)) {
+                    $data = $this->convertDate($data); 
+                }
+            } else {
+                $split = explode('|', $pathToEndpoint);
+                $id = $this->getData($arrData, $split[0]);
+                
+                if (!is_array($id)) {
+                    $data = $this->getDataFromId($id, $split[1], $split[2]);
+                    if (preg_match($this->dateFormatPattern, $data)) {
+                        $data = $this->convertDate($data); 
+                    }
+                } else {
+                    $data = '';
+                    foreach ($id as $currId){
+                        $idData = $this->getDataFromId($currId, $split[1], $split[2]);
+                        
+                        if (preg_match($this->dateFormatPattern, $idData)) {
+                            $idData = $this->convertDate($idData); 
+                        }
+                        
+                        if (array_key_exists($marker, $this->wrapArray)) {
+                            $data .= $this->wrap($idData, $this->wrapArray[$marker]);
+                        } else {
+                            $data .= $idData;
+                        }
+                    }
+                }
+            }
+            
+            if ($this->removeWPClasses == true) {
+                $data = preg_replace('/class=".*\b"/', '', $data);
+            }
+            
+            $template = str_replace($marker, $data, $template);
+        }
+                
+        file_put_contents($pathToFile, $template);
         
         if (!empty($this->fileOwner)) {
              chown($pathToFile, $this->fileOwner);
         }
+    }
+    
+    private function getData($arrResult, $pathToEndpoint) {
+        $ex = explode('->', $pathToEndpoint);
+
+        $result = $arrResult;
+        foreach ($ex as $attribute) {
+           if (property_exists($result, $attribute)) {
+                $result = $result->$attribute;
+           }
+        }
+
+        return $result;
     }
     
     private function getTagNames($arrTags) {
@@ -166,6 +213,12 @@ class WPHeadlessStaticGenerator {
         return $author->name;
     }
     
+    private function getDataFromId($id, $endpoint, $dataPoint) {
+        $data = $this->callWPApi($this->apiUrl . $endpoint . '/' . $id);
+        
+        return $data->$dataPoint;
+    }
+    
     private function callWPApi($url) {
         $curl = curl_init();
         
@@ -179,12 +232,20 @@ class WPHeadlessStaticGenerator {
         return json_decode($result);
     }
     
-    private function convertDate($originalDate) {
-         if (empty($this->dateFormat)) {
+    private function convertDate($originalDate) { 
+        if (empty($this->dateFormat)) {
              return $originalDate;
          }
         
         return date($this->dateFormat, strtotime($originalDate));
+    }
+    
+    private function checkTrailingSlash($path) {
+        if (substr($path, -1) == '/') { 
+            return $path;
+        } else {
+            return $path . '/';
+        }
     }
 }
     
