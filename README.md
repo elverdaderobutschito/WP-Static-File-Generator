@@ -7,11 +7,11 @@ A class to grab WordPress-Posts and other data via the API and inject it into st
 
 This tool uses the WordPress API and generates a static file with WordPress-Content based on your template.
 
-Just add placeholders in the places where you want the content of a post to appear. This tool will automatically inject the respective content.
+Just add placeholders (injection points) in the places where you want the content of a post to appear. This tool will automatically inject the respective content.
 
 Add one or more of the following markers into your template (**Note**: These injection-points are freely definable, see Tutorial).
 
-| Marker | Respective Content |
+| Injection Point | Respective Content |
 | --- | --- |
 | ###title### | Title of post |
 | ###content### | Content of post |
@@ -28,6 +28,9 @@ An example for usage can be found in the sources.
 index.html is an example of how to set up your template.
 
 To check it out go to: [Working Example](https://wp-static-file-generator.die-wordpress-agentur.de/index.html)
+
+**Important**
+The class allows the free definition of injection-points and which data to inject. See Tutorial.
 
 ## Tutorial
 Here is an example on how to use the class.
