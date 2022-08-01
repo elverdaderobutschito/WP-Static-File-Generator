@@ -12,9 +12,12 @@
  * For more info see: https://github.com/elverdaderobutschito/WP-Static-File-Generator/blob/main/README.md
  */
 
+require('simple_html_dom.php');
 /**
  * Simple WordPress Static Site Generator
  * Uses the WordPress API and generates static html files
+ * 
+ * Licensed under The MIT License
  *  
  * @author El Butschito
  */
@@ -25,13 +28,18 @@ class WPHeadlessStaticGenerator {
     private $fileOwner;
     private $savePath;
     private $wrapArray;
-    private $removeWPClasses = false;
     private $dateFormatPattern = '/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/';
+    private $urlPatternArray;
+    private $urlReplaceArray;
+    private $originalDomain;
+    private $keepOriginalFileName = false;
     
-     public function __construct($apiUrl, $templatePath) {
+    public function __construct($apiUrl, $templatePath) {
         $this->setApiUrl($apiUrl);
         
         $this->setTemplatePath($templatePath);
+                
+        $this->originalDomain = parse_url($apiUrl)['host'];
     }
     
     public function setWPUrl($url) {
@@ -86,6 +94,12 @@ class WPHeadlessStaticGenerator {
         $this->dateFormatPattern = '/' . $pattern . '/';
     }
     
+    public function setKeepOriginalFilename($keep) {
+        if (is_bool($keep)) {
+            $this->keepOriginalFileName = $keep;
+        }
+    }
+    
     public function getSavePath() {
         if (!empty($this->savePath)) {
             return $this->savePath;
@@ -98,10 +112,9 @@ class WPHeadlessStaticGenerator {
         return '';
     }
     
-    public function setRemoveWPClasses($remove) {
-        if (is_bool($remove)) {
-            $this->removeWPClasses = $remove;
-        }
+    public function setReplaceUrlParts($patternArray, $replaceArray) {
+        $this->urlPatternArray = $patternArray;
+        $this->urlReplaceArray = $replaceArray;
     }
     
     public function injectDataIntoTemplate($wpApiEndpoint, $dataMarkerArray) {
@@ -121,7 +134,7 @@ class WPHeadlessStaticGenerator {
         $template = file_get_contents($this->templatePath);
         
         if (property_exists($arrData, 'slug')) {
-            $pathToFile = $this->getSavePath() . '/' . $arrData->slug . '.html';
+            $pathToFile = $this->getSavePath() . $this->createFilename($arrData);
         } else {
             $pathToFile = $this->getSavePath() . '/' . $endpoint . '_' . $arrData->id . '.html'; //-- assuming all API-Data has at least an ID
         }
@@ -132,7 +145,7 @@ class WPHeadlessStaticGenerator {
                 if (preg_match($this->dateFormatPattern, $data)) {
                     $data = $this->convertDate($data); 
                 }
-            } else {
+            } else { //-- alternative procedure if we ask for data of another object
                 $split = explode('|', $pathToEndpoint);
                 $id = $this->getData($arrData, $split[0]);
                 
@@ -159,18 +172,80 @@ class WPHeadlessStaticGenerator {
                 }
             }
             
-            if ($this->removeWPClasses == true) {
-                $data = preg_replace('/class=".*\b"/', '', $data);
-            }
-            
             $template = str_replace($marker, $data, $template);
         }
+        
+        $template = $this->removeUrlPatterns($template);
                 
         file_put_contents($pathToFile, $template);
         
         if (!empty($this->fileOwner)) {
              chown($pathToFile, $this->fileOwner);
         }
+    }
+    
+    private function createFilename($arrData) {
+        if (!$this->keepOriginalFileName) {
+            return '/' . $arrData->slug . '.html';
+        }
+        
+        $parseUrl = parse_url($arrData->link);
+        $pathInfo = pathinfo($arrData->link);
+        
+        if (!array_key_exists('extension', $pathInfo)) {
+            if (!file_exists($this->savePath . $parseUrl['path'])) {
+                mkdir($this->savePath . $parseUrl['path']);
+            }
+            
+            return $parseUrl['path'] . 'index.html';
+        }
+        
+        if (!empty($parseUrl['path'])) {
+            if (!file_exists($this->savePath . $parseUrl['path'])) {
+                mkdir($this->savePath . $parseUrl['path']);
+            }
+            
+            return $parseUrl['path'] . $pathInfo['basename'];
+        }
+    }
+    
+    private function removeUrlPatterns($template) {
+        $html = str_get_html($template);
+        
+        foreach($html->find('a') as $tag) {
+            if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {
+                $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
+                //$template = str_replace($tag->href, $newHref, $template);
+            }
+        }
+        
+        foreach($html->find('img') as $tag) {
+            if (preg_match('/' . $this->originalDomain . '/', $tag->src)) {
+                $newSrc = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->src);
+                $tag->srcset = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->srcset); 
+                
+                //--save img files to folder 
+                $this->saveImgFiles($tag->src, $newSrc);
+                
+                $tag->src = $newSrc;
+            }
+        }
+        
+        return $html->__toString();
+    }
+    
+    private function saveImgFiles($src, $newFolder) {        
+        $parseUrl = parse_url($newFolder);
+        $pathInfo = pathinfo($parseUrl['path']);
+        $filename = pathinfo($newFolder)['basename'];
+
+        $createPath = $this->savePath . $pathInfo['dirname'];
+        
+        if (!file_exists($createPath)) {
+            mkdir($createPath, 0777, true);
+        }
+        
+        copy($src, $createPath . '/' . $filename);
     }
     
     private function getData($arrResult, $pathToEndpoint) {
@@ -207,12 +282,6 @@ class WPHeadlessStaticGenerator {
         return $ex[0] . $content . $ex[1];
     }
     
-    private function getAuthorName($id) {
-        $author = $this->callWPApi($this->apiUrl . '/users/' . $id);
-        
-        return $author->name;
-    }
-    
     private function getDataFromId($id, $endpoint, $dataPoint) {
         $data = $this->callWPApi($this->apiUrl . $endpoint . '/' . $id);
         
@@ -226,9 +295,9 @@ class WPHeadlessStaticGenerator {
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
 
         $result = curl_exec($curl);
-
+        
         curl_close($curl);
-
+        
         return json_decode($result);
     }
     
