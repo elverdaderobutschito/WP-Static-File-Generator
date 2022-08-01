@@ -141,7 +141,7 @@ By setting
 $generator->setKeepOriginalFilename(false);
 ```
 
-You tell the generator to create a file in the root-folder with name <slug>.html
+You tell the generator to create a file in the root-folder with name slug.html
 
 If you set
 
