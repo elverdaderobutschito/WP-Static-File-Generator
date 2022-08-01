@@ -141,7 +141,7 @@ By setting
 $generator->setKeepOriginalFilename(false);
 ```
 
-You tell the generator to create a file in the root-folder with name slug.html
+You tell the generator to create a file in the root-folder with name slug.html, where "slug" is the "slug"-Data from the API-response.
 
 If you set
 
