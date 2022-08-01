@@ -215,7 +215,6 @@ class WPHeadlessStaticGenerator {
         foreach($html->find('a') as $tag) {
             if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {
                 $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
-                //$template = str_replace($tag->href, $newHref, $template);
             }
         }
         
@@ -231,7 +230,12 @@ class WPHeadlessStaticGenerator {
             }
         }
         
-        return $html->__toString();
+        $template = $html->__toString();
+                
+        $html->clear();
+        unset($html);
+        
+        return $template;
     }
     
     private function saveImgFiles($src, $newFolder) {        
