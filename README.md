@@ -193,7 +193,7 @@ This date will be changed to whatever date-format you set by setDateFormat($your
 
 Should you want to search for a different date pattern because the output of your WordPress is different, just define your search-pattern by a **regular expression** by setting:
 ```php
-$generator-setDateFormatPattern($pattern); //-- '/' at the beginning an end of your regex will be set automatically
+$generator-setDateFormatPattern($pattern); //-- '/' at the beginning and end of your regex will be set automatically
 ```
 
 
