@@ -33,6 +33,8 @@ class WPHeadlessStaticGenerator {
     private $urlReplaceArray;
     private $originalDomain;
     private $keepOriginalFileName = false;
+    private $removeWPClasses = true;
+    private $tidyHtmlRules;
     
     public function __construct($apiUrl, $templatePath) {
         $this->setApiUrl($apiUrl);
@@ -117,6 +119,10 @@ class WPHeadlessStaticGenerator {
         $this->urlReplaceArray = $replaceArray;
     }
     
+    public function setTidyHtmlRules($tidyHtmlRules) {
+        $this->tidyHtmlRules = $tidyHtmlRules;
+    }
+    
     public function injectDataIntoTemplate($wpApiEndpoint, $dataMarkerArray) {
         $wpApiEndpoint = $this->checkTrailingSlash($wpApiEndpoint);
         $arrData = $this->callWPApi($this->apiUrl . $wpApiEndpoint);
@@ -130,6 +136,10 @@ class WPHeadlessStaticGenerator {
         }
     }
     
+    public function setRemoveWPClasses($remove) {
+        $this->removeWPClasses = $remove;
+    } 
+    
     private function injectSingle($arrData, $endpoint, $dataMarkerArray) {
         $template = file_get_contents($this->templatePath);
         
@@ -142,7 +152,8 @@ class WPHeadlessStaticGenerator {
         foreach ($dataMarkerArray as $pathToEndpoint => $marker) {
             if (!preg_match('/\|/', $pathToEndpoint)) {
                 $data = $this->getData($arrData, $pathToEndpoint);
-                if (preg_match($this->dateFormatPattern, $data)) {
+               
+                if (preg_match($this->dateFormatPattern, $data) && $pathToEndpoint != 'yoast_head') {
                     $data = $this->convertDate($data); 
                 }
             } else { //-- alternative procedure if we ask for data of another object
@@ -151,7 +162,7 @@ class WPHeadlessStaticGenerator {
                 
                 if (!is_array($id)) {
                     $data = $this->getDataFromId($id, $split[1], $split[2]);
-                    if (preg_match($this->dateFormatPattern, $data)) {
+                    if (preg_match($this->dateFormatPattern, $data) && $pathToEndpoint != 'yoast_head') {
                         $data = $this->convertDate($data); 
                     }
                 } else {
@@ -159,7 +170,7 @@ class WPHeadlessStaticGenerator {
                     foreach ($id as $currId){
                         $idData = $this->getDataFromId($currId, $split[1], $split[2]);
                         
-                        if (preg_match($this->dateFormatPattern, $idData)) {
+                        if (preg_match($this->dateFormatPattern, $idData) && $pathToEndpoint != 'yoast_head') {
                             $idData = $this->convertDate($idData); 
                         }
                         
@@ -175,7 +186,8 @@ class WPHeadlessStaticGenerator {
             $template = str_replace($marker, $data, $template);
         }
         
-        $template = $this->removeUrlPatterns($template);
+        //-- Remove unwanted stuff from HTML
+        $template = $this->tidyHtml($template);
                 
         file_put_contents($pathToFile, $template);
         
@@ -209,11 +221,25 @@ class WPHeadlessStaticGenerator {
         }
     }
     
-    private function removeUrlPatterns($template) {
+    private function tidyHtml($template) {
         $html = str_get_html($template);
         
         foreach($html->find('a') as $tag) {
             if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {
+                $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
+            }
+        }
+        
+        //-- especially for yoast_head
+        foreach($html->find('[content]') as $tag) {            
+            if (preg_match('/' . $this->originalDomain . '/', $tag->content)) {                
+                $tag->content = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->content);
+            }
+        }
+        
+        //-- especially for yoast_head
+        foreach($html->find('[href]') as $tag) {            
+            if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {                
                 $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
             }
         }
@@ -228,6 +254,34 @@ class WPHeadlessStaticGenerator {
                 
                 $tag->src = $newSrc;
             }
+        }
+        
+        if ($this->removeWPClasses) {
+            foreach ($html->find('[class|=wp]') as $tag) {                
+                $tag->removeAttribute('class');
+            }
+        }
+        
+        if (is_array($this->tidyHtmlRules)) {
+            foreach ($this->tidyHtmlRules as $rule) {
+                foreach ($html->find($rule['search']) as $tag) {                
+                    if ($rule['action'][0] == 'remove') {
+                        $tag->removeAttribute($rule['action'][1]);
+                    } elseif ($rule['action'][0] == 'change') {
+                        $tag->setAttribute($rule['action'][1], $rule['action'][2]); 
+                    }
+                }
+            }
+        }
+        
+        foreach ($html->find('script.yoast-schema-graph') as $tag) {
+            $newTag = preg_replace('/<script [a-z,=,",\/\+\s,-]*>/', '', $tag->innertext);
+            
+            $newTag = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $newTag);
+            
+            $newTag = str_replace('</script>', '', $newTag);
+          
+            $tag->innertext = $newTag;
         }
         
         $template = $html->__toString();
