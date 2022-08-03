@@ -151,4 +151,50 @@ $generator->setKeepOriginalFilename(true);
 
 the generator keeps the original filename, creates the respective paths in the root-folder and puts the html-file as index.html into that folder.
 
+### Tidy HTML
+It might be that WordPress creates a bunch of HTML that you don't want, like classes or 'loading="lazy"' with images. 
+You can define rules do get rid of them. 
+
+This is it how works:
+
+Put your rules into an array. One index for each rule.
+
+```php
+$tidyHtmlRules[0] = array(
+  'search' => '[loading=lazy]',
+  'action' => array('remove', 'loading')  
+);
+
+$generator->setTidyHtmlRules($tidyHtmlRules);
+
+```
+That rule tells the generator to search for all tags that contain 'loading="lazy"'. This is by applying CSS-Selectors (see: https://www.w3schools.com/cssref/css_selectors.asp). If you wanted e.g. to search for all p-elements with class="intro" you would use "p.intro". 
+The "action" part tells the generator to remove the attribute "loading". The value must be an array.
+
+You can either **remove** a tag or you can **change** it. 
+
+If I wanted to change the action above to loading="crazy" (it doesn't make sense, I know - it's an example) I would write:
+
+'action' => array('change', 'loading', 'crazy');
+
+### Getting rid of "wp-" CSS-classes
+The generator removes all classes that contain "wp-" by default.
+
+If you don't want that for whatever reason, just set:
+
+```php
+$generator->setRemoveWPClasses(false);
+```
+
+### Dealing with dates
+By default the generator looks for dates in the standard-format like: 2018-12-13T09:33:35+00:00
+
+This date will be changed to whatever date-format you set by setDateFormat($yourDateFormat).
+
+Should you want to search for a different date pattern because the output of your WordPress is different, just define your search-pattern by a **regular expression** by setting:
+```php
+$generator-setDateFormatPattern($pattern); //-- '/' at the beginning an end of your regex will be set automatically
+```
+
+
 
