@@ -23,6 +23,7 @@ require('simple_html_dom.php');
  */
 class WPHeadlessStaticGenerator {
     private $apiUrl;
+    private $apiEndpointTopRoute;
     private $templatePath;
     private $dateFormat;
     private $fileOwner;
@@ -36,16 +37,18 @@ class WPHeadlessStaticGenerator {
     private $removeWPClasses = true;
     private $tidyHtmlRules;
     
-    public function __construct($apiUrl, $templatePath) {
+    public function __construct($apiUrl, $apiEndpointTopRoute, $templatePath) {
         $this->setApiUrl($apiUrl);
+        
+        $this->setApiEndpointTopRoute($apiEndpointTopRoute);
         
         $this->setTemplatePath($templatePath);
                 
         $this->originalDomain = parse_url($apiUrl)['host'];
     }
     
-    public function setWPUrl($url) {
-        $this->wpUrl = $url;
+    public function setApiEndpointTopRoute($route) {
+        $this->apiEndpointTopRoute = $this->checkTrailingSlash($route);
     }
     
     public function setApiUrl($apiUrl) {
@@ -125,7 +128,7 @@ class WPHeadlessStaticGenerator {
     
     public function injectDataIntoTemplate($wpApiEndpoint, $dataMarkerArray) {
         $wpApiEndpoint = $this->checkTrailingSlash($wpApiEndpoint);
-        $arrData = $this->callWPApi($this->apiUrl . $wpApiEndpoint);
+        $arrData = $this->callWPApi($this->apiUrl . $this->apiEndpointTopRoute . $wpApiEndpoint);
         
         if (!is_array($arrData)) {
             $this->injectSingle($arrData, $wpApiEndpoint, $dataMarkerArray);
@@ -152,16 +155,18 @@ class WPHeadlessStaticGenerator {
         foreach ($dataMarkerArray as $pathToEndpoint => $marker) {
             if (!preg_match('/\|/', $pathToEndpoint)) {
                 $data = $this->getData($arrData, $pathToEndpoint);
-               
+                
                 if (preg_match($this->dateFormatPattern, $data) && $pathToEndpoint != 'yoast_head') {
                     $data = $this->convertDate($data); 
                 }
             } else { //-- alternative procedure if we ask for data of another object
                 $split = explode('|', $pathToEndpoint);
+                 
                 $id = $this->getData($arrData, $split[0]);
-                
+               
                 if (!is_array($id)) {
                     $data = $this->getDataFromId($id, $split[1], $split[2]);
+                    
                     if (preg_match($this->dateFormatPattern, $data) && $pathToEndpoint != 'yoast_head') {
                         $data = $this->convertDate($data); 
                     }
@@ -274,6 +279,7 @@ class WPHeadlessStaticGenerator {
             }
         }
         
+        //-- yoast_head specific
         foreach ($html->find('script.yoast-schema-graph') as $tag) {
             $newTag = preg_replace('/<script [a-z,=,",\/\+\s,-]*>/', '', $tag->innertext);
             
@@ -319,17 +325,6 @@ class WPHeadlessStaticGenerator {
         return $result;
     }
     
-    private function getTagNames($arrTags) {
-        $tagNames = '';
-       
-        foreach ($arrTags as $currTag) {
-            $tag = $this->callWPApi($this->apiUrl . '/tags/' . $currTag); 
-            $tagNames .= $this->wrap($tag->name, $this->tagWrap);
-        }
-        
-        return $tagNames;
-    }
-    
     public function wrap($content, $wrap='') {
         $ex = explode('|', $wrap);
         
@@ -341,7 +336,11 @@ class WPHeadlessStaticGenerator {
     }
     
     private function getDataFromId($id, $endpoint, $dataPoint) {
-        $data = $this->callWPApi($this->apiUrl . $endpoint . '/' . $id);
+        $data = $this->callWPApi($this->apiUrl . $this->apiEndpointTopRoute . $endpoint . '/' . $id);
+
+        if (!property_exists($data, $dataPoint)) {
+            return 'No such property ' . $endpoint . '->' . $dataPoint;
+        }
         
         return $data->$dataPoint;
     }
