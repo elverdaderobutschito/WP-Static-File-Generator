@@ -36,7 +36,10 @@ The class allows the free definition of injection-points and which data to injec
 Here is an example on how to use the class.
 
 ```php
-$generator = new WPHeadlessStaticGenerator("http://localhost/wordpress/index.php/wp-json/wp/v2", "/tmp/WPHeadless/article_template2.html");
+$generator = new WPHeadlessStaticGenerator(
+    "http://localhost/wordpress/index.php/wp-json/",
+    "wp/v2/",
+    "/tmp/WPHeadless/article_template2.html");
 $generator->setSavePath("/tmp/WPHeadless/");
 $generator->setFileOwner('butsch');
 
@@ -58,9 +61,21 @@ $generator->injectDataIntoTemplate('posts/', $markerArray);`
 Let's explore the code.
 
 ```php 
-$generator = new WPHeadlessStaticGenerator("http://localhost/wordpress/index.php/wp-json/wp/v2", "/tmp/WPHeadless/article_template2.html");`
+//-- Old version: $generator = new WPHeadlessStaticGenerator("http://localhost/wordpress/index.php/wp-json/wp/v2", "/tmp/WPHeadless/article_template2.html");`
+$generator = new WPHeadlessStaticGenerator(
+    "http://localhost/wordpress/index.php/wp-json/",
+    "wp/v2/",
+    "/tmp/WPHeadless/article_template2.html");
 ```
-This is the constructor defining the API-URL and the location of your template. The template may be located locally or somewhere online.
+This is the constructor defining the API-ROOT-URL, the API-Endpoint-Top-Route and the location of your template. The template may be located locally or somewhere online.
+
+The API-Endpoint-Top-Route is something like "wp/v2/" or "wp-block-editor/v1/" or whatever data you want to fetch. You later ask for a specific endpoint to that top route like "posts". 
+
+You can change this top route by setting:
+
+```php
+$generator->setApiEndpointTopRoute("wp-block-editor/v1/"); //-- for example
+```
 
 ```php
 $generator->setSavePath("/tmp/WPHeadless/");
