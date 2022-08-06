@@ -170,7 +170,7 @@ the generator keeps the original filename, creates the respective paths in the r
 It might be that WordPress creates a bunch of HTML that you don't want, like classes or 'loading="lazy"' with images. 
 You can define rules to get rid of them. 
 
-This is it how works:
+This is how it works:
 
 Put your rules into an array. One index for each rule.
 
