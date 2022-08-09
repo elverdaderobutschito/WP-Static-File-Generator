@@ -48,11 +48,11 @@ class WPHeadlessStaticGenerator {
     }
     
     public function setApiEndpointTopRoute($route) {
-        $this->apiEndpointTopRoute = $this->checkTrailingSlash($route);
+        $this->apiEndpointTopRoute = trim($this->checkTrailingSlash($route));
     }
     
     public function setApiUrl($apiUrl) {
-        $this->apiUrl = $this->checkTrailingSlash($apiUrl);
+        $this->apiUrl = trim($this->checkTrailingSlash($apiUrl));
     }
     
     public function getApiUrl() {
@@ -216,48 +216,65 @@ class WPHeadlessStaticGenerator {
             
             return $parseUrl['path'] . 'index.html';
         }
+  
+        $path = str_replace('/' . $pathInfo['basename'], '', $parseUrl['path']);
         
-        if (!empty($parseUrl['path'])) {
-            if (!file_exists($this->savePath . $parseUrl['path'])) {
-                mkdir($this->savePath . $parseUrl['path']);
-            }
-            
-            return $parseUrl['path'] . $pathInfo['basename'];
+        if (!file_exists($this->savePath . $path)) {     
+            mkdir($this->savePath . $path, 0777, true); 
         }
+            
+        return $parseUrl['path'];
+    }
+    
+    private function changeUrls() {
+        return count($this->urlPatternArray) > 0 && count($this->urlReplaceArray) > 0;
     }
     
     private function tidyHtml($template) {
         $html = str_get_html($template);
         
-        foreach($html->find('a') as $tag) {
-            if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {
-                $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
+        if ($this->changeUrls()) {
+            foreach($html->find('a') as $tag) {
+                if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {
+                    $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
+                }
             }
-        }
-        
-        //-- especially for yoast_head
-        foreach($html->find('[content]') as $tag) {            
-            if (preg_match('/' . $this->originalDomain . '/', $tag->content)) {                
-                $tag->content = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->content);
+
+            //-- especially for yoast_head
+            foreach($html->find('[content]') as $tag) {            
+                if (preg_match('/' . $this->originalDomain . '/', $tag->content)) {                
+                    $tag->content = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->content);
+                }
             }
-        }
-        
-        //-- especially for yoast_head
-        foreach($html->find('[href]') as $tag) {            
-            if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {                
-                $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
+
+            //-- especially for yoast_head
+            foreach($html->find('[href]') as $tag) {            
+                if (preg_match('/' . $this->originalDomain . '/', $tag->href)) {                
+                    $tag->href = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->href);
+                }
             }
-        }
-        
-        foreach($html->find('img') as $tag) {
-            if (preg_match('/' . $this->originalDomain . '/', $tag->src)) {
-                $newSrc = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->src);
-                $tag->srcset = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->srcset); 
-                
-                //--save img files to folder 
-                $this->saveImgFiles($tag->src, $newSrc);
-                
-                $tag->src = $newSrc;
+
+            foreach($html->find('img') as $tag) {
+                if (preg_match('/' . $this->originalDomain . '/', $tag->src)) {
+                    $newSrc = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->src);
+                    $tag->srcset = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $tag->srcset); 
+
+                    //--save img files to folder 
+                    $this->saveImgFiles($tag->src, $newSrc);
+
+                    $tag->src = $newSrc;
+                }
+            }
+            
+             //-- yoast_head specific
+            foreach ($html->find('script.yoast-schema-graph') as $tag) {
+                $newTag = preg_replace('/<script [a-z,=,",\/\+\s,-]*>/', '', $tag->innertext);
+
+                $newTag = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $newTag);
+
+                $newTag = str_replace('</script>', '', $newTag);
+
+                $tag->innertext = $newTag;
             }
         }
         
@@ -278,18 +295,7 @@ class WPHeadlessStaticGenerator {
                 }
             }
         }
-        
-        //-- yoast_head specific
-        foreach ($html->find('script.yoast-schema-graph') as $tag) {
-            $newTag = preg_replace('/<script [a-z,=,",\/\+\s,-]*>/', '', $tag->innertext);
-            
-            $newTag = preg_replace($this->urlPatternArray, $this->urlReplaceArray, $newTag);
-            
-            $newTag = str_replace('</script>', '', $newTag);
-          
-            $tag->innertext = $newTag;
-        }
-        
+         
         $template = $html->__toString();
                 
         $html->clear();
