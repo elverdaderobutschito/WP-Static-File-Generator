@@ -27,7 +27,7 @@ An example for usage can be found in the sources.
 
 index.html is an example of how to set up your template.
 
-To check it out go to: [Working Example](https://wp-static-file-generator.die-wordpress-agentur.de/index.html)
+To check it out go to: [Working Example](http://wordpress-static-generator.com/)
 
 **Important**
 The class allows the free definition of injection-points and which data to inject. See Tutorial.
